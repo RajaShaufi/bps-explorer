@@ -82,6 +82,37 @@
         </div>
     </section>
 </div>
+
+<div id="detail-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="detail-modal-title">Detail Data</h3>
+            <button id="detail-modal-close">Tutup</button>
+        </div>
+        <div id="detail-modal-controls" class="field-row" style="display:none">
+            <div class="field">
+                <label>Tahun</label>
+                <select id="detail-year-select"></select>
+            </div>
+        </div>
+        <div id="detail-modal-status" class="status"></div>
+        <div class="toolbar">
+            <span></span>
+            <div class="toolbar-actions" id="detail-export-buttons">
+                <a href="#" class="btn-export" data-fmt="csv">Export CSV</a>
+                <a href="#" class="btn-export" data-fmt="xlsx">Export Excel</a>
+                <a href="#" class="btn-export" data-fmt="json">Export JSON</a>
+            </div>
+        </div>
+        <div class="table-wrap modal-table-wrap">
+            <table id="detail-table">
+                <thead><tr></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

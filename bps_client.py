@@ -148,6 +148,50 @@ def get_tablestatistic(key, domain, subject=None, page=None, perpage=None):
     return _get("list", params)
 
 
+SIMDASI_BASE = "interoperabilitas/datasource/simdasi/id"
+
+
+def get_simdasi_area_subject_tables(key, wilayah, id_subjek):
+    """List of SIMDASI Table Based on Area and Subject - id_subjek == mms_id,
+    yang sama dengan id subjek CSA (subcsa_id)."""
+    return _get(f"{SIMDASI_BASE}/24/", {"wilayah": wilayah, "id_subjek": id_subjek, "key": key})
+
+
+def get_simdasi_table_detail(key, wilayah, tahun, id_tabel):
+    return _get(f"{SIMDASI_BASE}/25/", {"wilayah": wilayah, "tahun": tahun, "id_tabel": id_tabel, "key": key})
+
+
+def parse_simdasi_area_subject_tables(response):
+    inner = (response.get("data") or [{}, {}])[1] or {}
+    return inner.get("data", []) or []
+
+
+def parse_simdasi_table_detail(response):
+    """Ubah respons Detail of SIMDASI Table jadi (meta, rows rata kategori/variabel/nilai)."""
+    inner = (response.get("data") or [{}, {}])[1] or {}
+    kolom = inner.get("kolom", {}) or {}
+    data_rows = inner.get("data", []) or []
+
+    rows = []
+    for row in data_rows:
+        kategori = row.get("label_raw") or row.get("label") or ""
+        for col_key, val_obj in (row.get("variables") or {}).items():
+            col_meta = kolom.get(col_key, {})
+            rows.append({
+                "kategori": kategori,
+                "variabel": col_meta.get("nama_variabel", col_key),
+                "satuan": col_meta.get("satuan", ""),
+                "nilai": (val_obj or {}).get("value"),
+            })
+
+    meta = {
+        "judul": inner.get("judul_tabel"),
+        "tahun": inner.get("tahun_data"),
+        "wilayah": inner.get("wilayah"),
+    }
+    return meta, rows
+
+
 def parse_dynamic_data(response):
     """Ubah respons mentah 'data' jadi baris tabel rata (wilayah, variabel, tahun, nilai).
 

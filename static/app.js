@@ -149,6 +149,10 @@ function clearSidebarSelection() {
     searchAllNode.classList.remove("selected");
 }
 
+function normalizeTitle(s) {
+    return (s || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 async function selectSubject(subId, title, el) {
     clearSidebarSelection();
     el.classList.add("selected");
@@ -159,12 +163,29 @@ async function selectSubject(subId, title, el) {
     currentRows = [];
 
     try {
-        const data = await fetchJSON(`/api/csa/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`);
-        const items = data.items || [];
-        currentRows = items.map(it => ({
-            id: it.id, title: it.title, tablesource: Number(it.tablesource),
-            updt_date: null, size: null, excel: null,
-        }));
+        const [csaResult, simdasiResult] = await Promise.allSettled([
+            fetchJSON(`/api/csa/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
+            fetchJSON(`/api/simdasi/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
+        ]);
+
+        const items = csaResult.status === "fulfilled" ? (csaResult.value.items || []) : [];
+        if (csaResult.status === "rejected") throw csaResult.reason;
+
+        const simdasiItems = simdasiResult.status === "fulfilled" ? (simdasiResult.value.items || []) : [];
+        const simdasiLookup = {};
+        simdasiItems.forEach(s => { simdasiLookup[normalizeTitle(s.judul)] = s; });
+
+        currentRows = items.map(it => {
+            const tablesource = Number(it.tablesource);
+            const row = { id: it.id, title: it.title, tablesource, updt_date: null, size: null, excel: null };
+            if (tablesource === 3) {
+                const match = simdasiLookup[normalizeTitle(it.title)];
+                if (match) {
+                    row.simdasi = { id_tabel: match.id_tabel, years: match.ketersediaan_tahun || [] };
+                }
+            }
+            return row;
+        });
         renderTableRows();
         setStatus("status-subject", `${currentRows.length} tabel ditemukan.`, "info");
         resolveStaticDetails();
@@ -213,10 +234,21 @@ document.getElementById("global-search-btn").addEventListener("click", async () 
     }
 });
 
-function sourceLabel(tablesource) {
-    if (tablesource === 2) return '<span class="hint">Data Dinamis</span>';
-    if (tablesource === 3) return '<span class="hint">SIMDASI</span>';
-    return '<span class="hint">tidak diketahui</span>';
+function dlCellContent(r, idx) {
+    if (r.tablesource === 1) {
+        return r.excel
+            ? `<a class="dl-link" href="${r.excel}" target="_blank">Unduh</a>`
+            : `<span class="hint">memuat...</span>`;
+    }
+    if (r.tablesource === 2) {
+        return `<button class="view-data-btn" data-action="view-dynamic" data-idx="${idx}">Lihat Data</button>`;
+    }
+    if (r.tablesource === 3) {
+        return r.simdasi
+            ? `<button class="view-data-btn" data-action="view-simdasi" data-idx="${idx}">Lihat Data</button>`
+            : `<span class="hint">SIMDASI (tidak dapat dibuka)</span>`;
+    }
+    return `<span class="hint">tidak diketahui</span>`;
 }
 
 function renderTableRows() {
@@ -226,9 +258,97 @@ function renderTableRows() {
             <td class="row-title">${r.title}</td>
             <td class="row-date">${r.updt_date || (r.tablesource === 1 ? "..." : "-")}</td>
             <td class="row-size">${r.size || (r.tablesource === 1 ? "..." : "-")}</td>
-            <td class="row-dl">${r.tablesource === 1 ? (r.excel ? `<a class="dl-link" href="${r.excel}" target="_blank">Unduh</a>` : `<span class="hint">memuat...</span>`) : sourceLabel(r.tablesource)}</td>
+            <td class="row-dl">${dlCellContent(r, idx)}</td>
         </tr>
     `).join("");
+}
+
+tablesTbody.addEventListener("click", (e) => {
+    const btn = e.target.closest(".view-data-btn");
+    if (!btn) return;
+    const row = currentRows[parseInt(btn.dataset.idx, 10)];
+    if (btn.dataset.action === "view-dynamic") openDynamicDetail(row);
+    else if (btn.dataset.action === "view-simdasi") openSimdasiDetail(row);
+});
+
+// ---------- Modal: Lihat Data (Dynamic Table / SIMDASI) ----------
+const modalOverlay = document.getElementById("detail-modal");
+const modalTitleEl = document.getElementById("detail-modal-title");
+const modalControls = document.getElementById("detail-modal-controls");
+const yearSelect = document.getElementById("detail-year-select");
+const detailTable = document.getElementById("detail-table");
+const exportButtons = document.querySelectorAll("#detail-export-buttons .btn-export");
+
+document.getElementById("detail-modal-close").addEventListener("click", () => {
+    modalOverlay.style.display = "none";
+});
+
+function renderDetailTable(columns, rows) {
+    detailTable.querySelector("thead tr").innerHTML = columns.map(c => `<th>${c.label}</th>`).join("");
+    detailTable.querySelector("tbody").innerHTML = rows.map(row => `
+        <tr>${columns.map(c => `<td>${row[c.key] ?? ""}</td>`).join("")}</tr>
+    `).join("");
+}
+
+async function openDynamicDetail(row) {
+    modalOverlay.style.display = "flex";
+    modalTitleEl.textContent = row.title;
+    modalControls.style.display = "none";
+    detailTable.querySelector("thead tr").innerHTML = "";
+    detailTable.querySelector("tbody").innerHTML = "";
+    setStatus("detail-modal-status", "Memuat data...", "info");
+    exportButtons.forEach(a => { a.href = `/api/export/${a.dataset.fmt}`; });
+
+    try {
+        const data = await fetchJSON(`/api/csa/dynamic-data?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&id=${row.id}`);
+        setStatus("detail-modal-status", `${data.count} baris ditemukan.`, "info");
+        renderDetailTable([
+            { key: "wilayah", label: "Wilayah" },
+            { key: "variabel", label: "Variabel" },
+            { key: "turvar", label: "Rincian" },
+            { key: "tahun", label: "Tahun" },
+            { key: "nilai", label: "Nilai" },
+            { key: "unit", label: "Unit" },
+        ], data.rows);
+    } catch (err) {
+        setStatus("detail-modal-status", err.message, "error");
+    }
+}
+
+async function openSimdasiDetail(row) {
+    modalOverlay.style.display = "flex";
+    modalTitleEl.textContent = row.title;
+    modalControls.style.display = "";
+    exportButtons.forEach(a => { a.href = `/api/simdasi/export/${a.dataset.fmt}`; });
+
+    const years = row.simdasi.years || [];
+    fillSelect(yearSelect, years.map(y => ({ val: y, label: String(y) })), "val", "label", null);
+    if (years.length) yearSelect.value = years[years.length - 1];
+
+    async function loadYear() {
+        detailTable.querySelector("thead tr").innerHTML = "";
+        detailTable.querySelector("tbody").innerHTML = "";
+        setStatus("detail-modal-status", "Memuat data...", "info");
+        try {
+            const data = await fetchJSON(`/api/simdasi/data?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&id_tabel=${encodeURIComponent(row.simdasi.id_tabel)}&tahun=${yearSelect.value}`);
+            setStatus("detail-modal-status", `${data.count} baris ditemukan (tahun ${yearSelect.value}).`, "info");
+            renderDetailTable([
+                { key: "kategori", label: "Kategori" },
+                { key: "variabel", label: "Variabel" },
+                { key: "nilai", label: "Nilai" },
+                { key: "satuan", label: "Satuan" },
+            ], data.rows);
+        } catch (err) {
+            setStatus("detail-modal-status", err.message, "error");
+        }
+    }
+
+    yearSelect.onchange = loadYear;
+    if (years.length) {
+        await loadYear();
+    } else {
+        setStatus("detail-modal-status", "Tidak ada tahun tersedia untuk tabel ini.", "warning");
+    }
 }
 
 async function resolveStaticDetails() {

@@ -262,6 +262,108 @@ def _guess_extension(resp):
     return "xls"
 
 
+def _wilayah_from_domain(domain):
+    """SIMDASI pakai kode wilayah MFD 7 digit (mis. '3100000' DKI Jakarta),
+    sementara domain BPS API di tempat lain 4 digit (mis. '3100') - MFD = domain + '000'."""
+    return (domain or "0000").ljust(7, "0")[:7]
+
+
+@app.route("/api/csa/dynamic-data")
+def api_csa_dynamic_data():
+    """Untuk tabel bersumber Dynamic Table (tablesource == 2): endpoint Detail of
+    Table (Using CSA Subject) yang sama ternyata langsung ngasih var/vervar/turvar/
+    tahun/datacontent, jadi bisa dipakai ulang parser Dynamic Data yang sudah ada."""
+    try:
+        key = _key()
+        domain = request.args["domain"]
+        table_id = request.args["id"]
+        detail = bps.get_tablestatistic_detail(key, domain=domain, table_id=table_id)
+        rows = bps.parse_dynamic_data(detail)
+        _last_result["rows"] = rows
+        return jsonify({"rows": rows, "count": len(rows)})
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil data dinamis: {e}"}), 500
+
+
+@app.route("/api/simdasi/tables")
+def api_simdasi_tables():
+    """Tabel SIMDASI untuk 1 subjek CSA tertentu (id_subjek == mms_id == subcsa_id)."""
+    try:
+        key = _key()
+        domain = request.args["domain"]
+        subject = request.args["subject"]
+        wilayah = _wilayah_from_domain(domain)
+        resp = bps.get_simdasi_area_subject_tables(key, wilayah, subject)
+        items = bps.parse_simdasi_area_subject_tables(resp)
+        return jsonify({"items": items, "wilayah": wilayah})
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil tabel SIMDASI: {e}"}), 500
+
+
+_last_simdasi_result = {"rows": []}
+
+
+@app.route("/api/simdasi/data")
+def api_simdasi_data():
+    try:
+        key = _key()
+        domain = request.args["domain"]
+        id_tabel = request.args["id_tabel"]
+        tahun = request.args["tahun"]
+        wilayah = _wilayah_from_domain(domain)
+        resp = bps.get_simdasi_table_detail(key, wilayah, tahun, id_tabel)
+        meta, rows = bps.parse_simdasi_table_detail(resp)
+        _last_simdasi_result["rows"] = rows
+        return jsonify({"meta": meta, "rows": rows, "count": len(rows)})
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil data SIMDASI: {e}"}), 500
+
+
+@app.route("/api/simdasi/export/<fmt>")
+def api_simdasi_export(fmt):
+    rows = _last_simdasi_result.get("rows", [])
+    if not rows:
+        return jsonify({"error": "Belum ada data SIMDASI untuk diekspor."}), 400
+
+    fieldnames = list(rows[0].keys())
+
+    if fmt == "json":
+        buf = io.BytesIO(json.dumps(rows, ensure_ascii=False, indent=2).encode("utf-8"))
+        return send_file(buf, mimetype="application/json", as_attachment=True,
+                          download_name="simdasi_data.json")
+
+    if fmt == "csv":
+        text_buf = io.StringIO()
+        writer = csv.DictWriter(text_buf, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        buf = io.BytesIO(text_buf.getvalue().encode("utf-8-sig"))
+        return send_file(buf, mimetype="text/csv", as_attachment=True,
+                          download_name="simdasi_data.csv")
+
+    if fmt == "xlsx":
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "SIMDASI Data"
+        ws.append(fieldnames)
+        for r in rows:
+            ws.append([r.get(f) for f in fieldnames])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          as_attachment=True, download_name="simdasi_data.xlsx")
+
+    return jsonify({"error": "Format tidak didukung. Gunakan csv, json, atau xlsx."}), 400
+
+
 @app.route("/api/csa/bulk-download", methods=["POST"])
 def api_csa_bulk_download():
     """Unduh beberapa tabel Excel sekaligus dan bundel jadi satu file .zip."""
