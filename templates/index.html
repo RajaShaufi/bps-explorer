@@ -10,41 +10,84 @@
 <div class="app">
     <header>
         <h1>BPS Explorer</h1>
-        <p class="subtitle">Jelajahi Dynamic Data & Static Table dari Web API BPS — dijalankan lokal</p>
+        <p class="subtitle">Jelajahi & unduh data BPS lintas domain — dijalankan lokal</p>
     </header>
 
     <section class="card">
-        <div class="field">
-            <label>API Key BPS</label>
-            <input type="password" id="api_key" placeholder="Masukkan API Key BPS Anda">
-            <span class="hint">Key tidak disimpan di server, hanya dipakai saat request berjalan.</span>
-        </div>
-
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="dynamic">Dynamic Data</button>
-            <button class="tab-btn" data-tab="static">Static Table</button>
-        </div>
-
-        <div id="tab-dynamic" class="tab-content">
-            <div class="field-row">
-                <div class="field">
-                    <label>Tipe Domain</label>
-                    <select id="domain_type">
-                        <option value="all">Semua (Nasional + Provinsi)</option>
-                        <option value="prov">Provinsi</option>
-                        <option value="kabbyprov">Kabupaten/Kota (per Provinsi)</option>
-                    </select>
-                </div>
-                <div class="field" id="prov_picker_wrap" style="display:none">
-                    <label>Pilih Provinsi Induk</label>
-                    <select id="prov_picker"></select>
-                </div>
-                <div class="field">
-                    <label>Domain</label>
-                    <select id="domain"></select>
-                </div>
+        <div class="field-row">
+            <div class="field">
+                <label>API Key BPS</label>
+                <input type="password" id="api_key" placeholder="Masukkan API Key BPS Anda">
             </div>
+            <div class="field">
+                <label>Tipe Domain</label>
+                <select id="domain_type">
+                    <option value="all">Semua (Nasional + Provinsi)</option>
+                    <option value="prov">Provinsi</option>
+                    <option value="kabbyprov">Kabupaten/Kota (per Provinsi)</option>
+                </select>
+            </div>
+            <div class="field" id="prov_picker_wrap" style="display:none">
+                <label>Provinsi Induk</label>
+                <select id="prov_picker"></select>
+            </div>
+            <div class="field">
+                <label>Domain</label>
+                <select id="domain"></select>
+            </div>
+        </div>
+        <span class="hint">Key tidak disimpan di server, hanya dipakai saat request berjalan.</span>
+    </section>
 
+    <section class="card">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="subject">Statistik menurut Subjek</button>
+            <button class="tab-btn" data-tab="dynamic">Dynamic Data</button>
+        </div>
+
+        <!-- ===================== TAB: Statistik menurut Subjek ===================== -->
+        <div id="tab-subject" class="tab-content layout-sidebar">
+            <aside class="sidebar" id="csa-sidebar">
+                <div class="sidebar-item special" id="search-all-node">🔍 Cari Semua Tabel</div>
+                <div id="csa-tree"><span class="hint">Isi API key & pilih domain dulu.</span></div>
+            </aside>
+
+            <main class="main-panel">
+                <div id="subject-search-box" class="field" style="display:none">
+                    <input type="text" id="global_keyword" placeholder="Cari judul tabel (mis. inflasi)...">
+                    <button id="global-search-btn">Cari</button>
+                </div>
+
+                <div class="toolbar">
+                    <h2 id="subject-title">Pilih subjek di samping</h2>
+                    <div class="toolbar-actions">
+                        <input type="text" id="filter-box" placeholder="Filter judul yang tampil...">
+                        <button id="select-all-btn">Pilih Semua</button>
+                        <button id="copy-titles-btn">Copy Semua Judul</button>
+                        <button id="download-selected-btn" class="primary">Download Terpilih</button>
+                    </div>
+                </div>
+                <div id="status-subject" class="status"></div>
+
+                <div class="table-wrap">
+                    <table id="tables-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30px"><input type="checkbox" id="check-all-header"></th>
+                                <th>Judul</th>
+                                <th style="width:110px">Update</th>
+                                <th style="width:90px">Ukuran</th>
+                                <th style="width:110px">Unduh</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+
+        <!-- ===================== TAB: Dynamic Data ===================== -->
+        <div id="tab-dynamic" class="tab-content" style="display:none">
             <div class="field-row">
                 <div class="field">
                     <label>Kategori Subjek</label>
@@ -63,19 +106,19 @@
             <div class="field-row">
                 <div class="field">
                     <label>Wilayah/Rincian (vervar)</label>
-                    <select id="vervar" multiple size="4"></select>
+                    <select id="vervar" multiple size="6"></select>
                 </div>
                 <div class="field">
                     <label>Rincian Turunan (turvar, opsional)</label>
-                    <select id="turvar" multiple size="4"></select>
+                    <select id="turvar" multiple size="6"></select>
                 </div>
                 <div class="field">
                     <label>Tahun</label>
-                    <select id="tahun" multiple size="4"></select>
+                    <select id="tahun" multiple size="6"></select>
                 </div>
             </div>
 
-            <button id="fetch-data-btn">Ambil Data</button>
+            <button id="fetch-data-btn" class="primary">Ambil Data</button>
             <div id="status-dynamic" class="status"></div>
 
             <div id="results-dynamic" style="display:none">
@@ -92,34 +135,6 @@
                         <thead>
                             <tr><th>Wilayah</th><th>Variabel</th><th>Rincian</th><th>Tahun</th><th>Nilai</th><th>Unit</th></tr>
                         </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div id="tab-static" class="tab-content" style="display:none">
-            <div class="field-row">
-                <div class="field">
-                    <label>Domain</label>
-                    <select id="st_domain"></select>
-                </div>
-                <div class="field">
-                    <label>Keyword</label>
-                    <input type="text" id="st_keyword" placeholder="mis. inflasi">
-                </div>
-                <div class="field">
-                    <label>Tahun</label>
-                    <input type="number" id="st_year" placeholder="2024">
-                </div>
-            </div>
-            <button id="fetch-static-btn">Cari Static Table</button>
-            <div id="status-static" class="status"></div>
-
-            <div id="results-static" style="display:none">
-                <div class="table-wrap">
-                    <table id="static-table">
-                        <thead><tr><th>Judul</th><th>Ukuran</th><th>Update</th><th>Excel</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>

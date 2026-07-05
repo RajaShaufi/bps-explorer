@@ -92,6 +92,48 @@ def get_statictable_detail(key, domain, table_id, lang="ind"):
     return resp.json()
 
 
+def paginate_all(list_fn, max_pages=300, **kwargs):
+    """Panggil list_fn(page=N, **kwargs) berulang sampai semua halaman BPS habis.
+
+    Endpoint list BPS defaultnya cuma ngasih ~10 item per halaman (field 'pages'
+    di response), jadi tanpa ini dropdown cuma nampilin sebagian kecil data.
+    """
+    page = 1
+    all_items = []
+    while True:
+        resp = list_fn(page=page, **kwargs)
+        info = resp.get("data", [{}, []])[0] or {}
+        items = resp.get("data", [{}, []])[1] or []
+        all_items.extend(items)
+        total_pages = info.get("pages", 1) or 1
+        if page >= total_pages or page >= max_pages:
+            break
+        page += 1
+    return all_items
+
+
+def get_subcatcsa(key, domain):
+    return _get("list", {"model": "subcatcsa", "domain": domain, "key": key})
+
+
+def get_subjectcsa(key, domain, subcat=None):
+    params = {"model": "subjectcsa", "domain": domain, "key": key}
+    if subcat:
+        params["subcat"] = subcat
+    return _get("list", params)
+
+
+def get_tablestatistic(key, domain, subject=None, page=None, perpage=None):
+    params = {"model": "tablestatistic", "domain": domain, "key": key}
+    if subject:
+        params["subject"] = subject
+    if page:
+        params["page"] = page
+    if perpage:
+        params["perpage"] = perpage
+    return _get("list", params)
+
+
 def parse_dynamic_data(response):
     """Ubah respons mentah 'data' jadi baris tabel rata (wilayah, variabel, tahun, nilai).
 

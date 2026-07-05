@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import zipfile
 
+import requests
 from flask import Flask, render_template, request, jsonify, send_file
 
 import bps_client as bps
@@ -17,6 +19,12 @@ def _key():
     if not key:
         raise BPSAPIError("API key BPS wajib diisi.")
     return key
+
+
+def _all_items_response(items):
+    """Bungkus list hasil paginate_all supaya bentuknya tetap kompatibel dengan
+    kontrak {"data": [info, items]} yang dipakai frontend."""
+    return {"data": [{"page": 1, "pages": 1, "total": len(items)}, items]}
 
 
 @app.route("/")
@@ -42,8 +50,8 @@ def api_domains():
 def api_subcat():
     try:
         key = _key()
-        data = bps.get_subcat(key, domain=request.args["domain"], page=request.args.get("page"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_subcat, key=key, domain=request.args["domain"])
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -54,9 +62,9 @@ def api_subcat():
 def api_subject():
     try:
         key = _key()
-        data = bps.get_subject(key, domain=request.args["domain"],
-                                subcat=request.args.get("subcat"), page=request.args.get("page"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_subject, key=key, domain=request.args["domain"],
+                                  subcat=request.args.get("subcat"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -67,9 +75,9 @@ def api_subject():
 def api_variable():
     try:
         key = _key()
-        data = bps.get_variable(key, domain=request.args["domain"],
-                                 subject=request.args.get("subject"), page=request.args.get("page"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_variable, key=key, domain=request.args["domain"],
+                                  subject=request.args.get("subject"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -80,8 +88,9 @@ def api_variable():
 def api_vervar():
     try:
         key = _key()
-        data = bps.get_vervar(key, domain=request.args["domain"], var=request.args.get("var"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_vervar, key=key, domain=request.args["domain"],
+                                  var=request.args.get("var"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -92,8 +101,9 @@ def api_vervar():
 def api_turvar():
     try:
         key = _key()
-        data = bps.get_turvar(key, domain=request.args["domain"], var=request.args.get("var"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_turvar, key=key, domain=request.args["domain"],
+                                  var=request.args.get("var"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -104,8 +114,9 @@ def api_turvar():
 def api_th():
     try:
         key = _key()
-        data = bps.get_th(key, domain=request.args["domain"], var=request.args.get("var"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_th, key=key, domain=request.args["domain"],
+                                  var=request.args.get("var"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -155,6 +166,126 @@ def api_statictable():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Gagal mengambil static table: {e}"}), 500
+
+
+@app.route("/api/csa/subcat")
+def api_csa_subcat():
+    try:
+        key = _key()
+        data = bps.get_subcatcsa(key, domain=request.args["domain"])
+        return jsonify(data)
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil CSA subject category: {e}"}), 500
+
+
+@app.route("/api/csa/subject")
+def api_csa_subject():
+    try:
+        key = _key()
+        data = bps.get_subjectcsa(key, domain=request.args["domain"], subcat=request.args.get("subcat"))
+        return jsonify(data)
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil CSA subject: {e}"}), 500
+
+
+@app.route("/api/csa/tables")
+def api_csa_tables():
+    try:
+        key = _key()
+        domain = request.args["domain"]
+        subject = request.args.get("subject")
+        items = []
+        page = 1
+        while True:
+            resp = bps.get_tablestatistic(key, domain=domain, subject=subject, page=page, perpage=100)
+            info = resp.get("data", [{}, []])[0] or {}
+            page_items = resp.get("data", [{}, []])[1] or []
+            items.extend(page_items)
+            total_pages = info.get("pages", 1) or 1
+            if page >= total_pages or page >= 50:
+                break
+            page += 1
+        return jsonify({"items": items})
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil daftar tabel: {e}"}), 500
+
+
+@app.route("/api/csa/table-detail")
+def api_csa_table_detail():
+    """Resolusi link download & tanggal update satu tabel statis lewat endpoint
+    Detail Statictable lama (schema-nya sudah jelas & stabil), dipanggil pakai
+    id yang sama dari listing CSA (tablesource == 1 alias Static Table)."""
+    try:
+        key = _key()
+        domain = request.args["domain"]
+        table_id = request.args["id"]
+        detail = bps.get_statictable_detail(key, domain=domain, table_id=table_id)
+        d = detail.get("data", {}) or {}
+        return jsonify({
+            "table_id": table_id,
+            "excel": d.get("excel"),
+            "size": d.get("size"),
+            "updt_date": d.get("updt_date"),
+        })
+    except BPSAPIError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Gagal mengambil detail tabel {request.args.get('id', '')}: {e}"}), 500
+
+
+@app.route("/api/csa/bulk-download", methods=["POST"])
+def api_csa_bulk_download():
+    """Unduh beberapa tabel Excel sekaligus dan bundel jadi satu file .zip."""
+    payload = request.get_json(force=True)
+    key = payload.get("key")
+    domain = payload.get("domain")
+    files = payload.get("files", [])  # [{id, title, excel}]
+
+    if not key or not domain:
+        return jsonify({"error": "API key dan domain wajib diisi."}), 400
+    if not files:
+        return jsonify({"error": "Tidak ada tabel yang dipilih."}), 400
+
+    zip_buf = io.BytesIO()
+    skipped = []
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            excel_url = f.get("excel")
+            title = (f.get("title") or f"table_{f.get('id')}").strip()
+            safe_name = "".join(c for c in title if c.isalnum() or c in " ._-")[:100] or f"table_{f.get('id')}"
+
+            if not excel_url:
+                # coba resolve dulu kalau belum ada link excel-nya
+                try:
+                    detail = bps.get_statictable_detail(key, domain=domain, table_id=f.get("id"))
+                    excel_url = (detail.get("data") or {}).get("excel")
+                except Exception:
+                    excel_url = None
+
+            if not excel_url:
+                skipped.append(title)
+                continue
+
+            try:
+                file_resp = requests.get(excel_url, timeout=60)
+                file_resp.raise_for_status()
+                ext = excel_url.split(".")[-1].split("?")[0][:5] or "xls"
+                zf.writestr(f"{safe_name}.{ext}", file_resp.content)
+            except Exception:
+                skipped.append(title)
+
+    zip_buf.seek(0)
+    resp = send_file(zip_buf, mimetype="application/zip", as_attachment=True,
+                      download_name="bps_tabel_terpilih.zip")
+    if skipped:
+        resp.headers["X-Skipped-Files"] = json.dumps(skipped, ensure_ascii=False)
+    return resp
 
 
 @app.route("/api/export/<fmt>")
