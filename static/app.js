@@ -98,8 +98,24 @@ const vervarSel = document.getElementById("vervar");
 const turvarSel = document.getElementById("turvar");
 const tahunSel = document.getElementById("tahun");
 
+function resetDownstream(from) {
+    // Hapus pilihan di level bawah supaya tidak ada kombinasi domain/variabel yang basi ter-submit.
+    const order = ["subcat", "subject", "variable", "vervar", "turvar", "tahun"];
+    const start = order.indexOf(from);
+    order.slice(start).forEach(level => {
+        if (level === "subcat") { subcatSel.innerHTML = '<option value="">-- Semua --</option>'; }
+        else if (level === "subject") { subjectSel.innerHTML = '<option value="">-- Pilih Kategori Dulu --</option>'; }
+        else if (level === "variable") { variableSel.innerHTML = '<option value="">-- Pilih Subjek Dulu --</option>'; }
+        else if (level === "vervar") { vervarSel.innerHTML = ""; }
+        else if (level === "turvar") { turvarSel.innerHTML = ""; }
+        else if (level === "tahun") { tahunSel.innerHTML = ""; }
+    });
+    document.getElementById("results-dynamic").style.display = "none";
+}
+
 async function loadSubcat() {
     if (!domainSel.value) return;
+    resetDownstream("subcat");
     try {
         const data = await fetchJSON(`/api/subcat?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}`);
         const list = data.data[1] || [];
@@ -112,6 +128,7 @@ async function loadSubcat() {
 
 async function loadSubject() {
     if (!domainSel.value) return;
+    resetDownstream("subject");
     try {
         let url = `/api/subject?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}`;
         if (subcatSel.value) url += `&subcat=${subcatSel.value}`;
@@ -125,6 +142,7 @@ async function loadSubject() {
 
 async function loadVariable() {
     if (!domainSel.value || !subjectSel.value) return;
+    resetDownstream("variable");
     try {
         const url = `/api/variable?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subjectSel.value}`;
         const data = await fetchJSON(url);
