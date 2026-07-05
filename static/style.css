@@ -62,26 +62,6 @@ header h1 { margin: 0 0 4px; font-size: 28px; }
     gap: 16px;
 }
 
-.tabs {
-    display: flex;
-    gap: 8px;
-    margin: 0 0 20px;
-    border-bottom: 1px solid var(--border);
-}
-
-.tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    padding: 10px 16px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 14px;
-    border-bottom: 2px solid transparent;
-}
-
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-
 button {
     background: #334155;
     color: var(--text);
@@ -93,7 +73,7 @@ button {
     cursor: pointer;
 }
 
-button.primary, button#fetch-data-btn {
+button.primary {
     background: var(--accent);
     color: #0f172a;
     border: none;

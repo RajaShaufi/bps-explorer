@@ -40,13 +40,8 @@
     </section>
 
     <section class="card">
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="subject">Statistik menurut Subjek</button>
-            <button class="tab-btn" data-tab="dynamic">Dynamic Data</button>
-        </div>
-
-        <!-- ===================== TAB: Statistik menurut Subjek ===================== -->
-        <div id="tab-subject" class="tab-content layout-sidebar">
+        <h2 style="margin-top:0">Statistik menurut Subjek</h2>
+        <div class="layout-sidebar">
             <aside class="sidebar" id="csa-sidebar">
                 <div class="sidebar-item special" id="search-all-node">🔍 Cari Semua Tabel</div>
                 <div id="csa-tree"><span class="hint">Isi API key & pilih domain dulu.</span></div>
@@ -84,61 +79,6 @@
                     </table>
                 </div>
             </main>
-        </div>
-
-        <!-- ===================== TAB: Dynamic Data ===================== -->
-        <div id="tab-dynamic" class="tab-content" style="display:none">
-            <div class="field-row">
-                <div class="field">
-                    <label>Kategori Subjek</label>
-                    <select id="subcat"><option value="">-- Semua --</option></select>
-                </div>
-                <div class="field">
-                    <label>Subjek</label>
-                    <select id="subject"><option value="">-- Pilih Kategori Dulu --</option></select>
-                </div>
-                <div class="field">
-                    <label>Variabel</label>
-                    <select id="variable"><option value="">-- Pilih Subjek Dulu --</option></select>
-                </div>
-            </div>
-
-            <div class="field-row">
-                <div class="field">
-                    <label>Wilayah/Rincian (vervar)</label>
-                    <select id="vervar" multiple size="6"></select>
-                </div>
-                <div class="field">
-                    <label>Rincian Turunan (turvar, opsional)</label>
-                    <select id="turvar" multiple size="6"></select>
-                </div>
-                <div class="field">
-                    <label>Tahun</label>
-                    <select id="tahun" multiple size="6"></select>
-                </div>
-            </div>
-
-            <button id="fetch-data-btn" class="primary">Ambil Data</button>
-            <div id="status-dynamic" class="status"></div>
-
-            <div id="results-dynamic" style="display:none">
-                <div class="results-header">
-                    <h2>Hasil (<span id="result-count">0</span> baris)</h2>
-                    <div class="export-buttons">
-                        <a href="/api/export/csv" class="btn-export">Export CSV</a>
-                        <a href="/api/export/xlsx" class="btn-export">Export Excel</a>
-                        <a href="/api/export/json" class="btn-export">Export JSON</a>
-                    </div>
-                </div>
-                <div class="table-wrap">
-                    <table id="data-table">
-                        <thead>
-                            <tr><th>Wilayah</th><th>Variabel</th><th>Rincian</th><th>Tahun</th><th>Nilai</th><th>Unit</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
         </div>
     </section>
 </div>

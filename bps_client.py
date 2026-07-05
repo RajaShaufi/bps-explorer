@@ -92,6 +92,15 @@ def get_statictable_detail(key, domain, table_id, lang="ind"):
     return resp.json()
 
 
+def get_tablestatistic_detail(key, domain, table_id, lang="ind"):
+    """Detail of Table (Using CSA Subject) - id di sini adalah id ter-encode dari
+    List of Table (Using CSA Subject), BUKAN table_id polos punya statictable lama."""
+    params = {"domain": domain, "model": "tablestatistic", "lang": lang, "id": table_id, "key": key}
+    resp = requests.get("https://webapi.bps.go.id/v1/api/view", params=params, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def paginate_all(list_fn, max_pages=300, **kwargs):
     """Panggil list_fn(page=N, **kwargs) berulang sampai semua halaman BPS habis.
 
@@ -112,14 +121,19 @@ def paginate_all(list_fn, max_pages=300, **kwargs):
     return all_items
 
 
-def get_subcatcsa(key, domain):
-    return _get("list", {"model": "subcatcsa", "domain": domain, "key": key})
+def get_subcatcsa(key, domain, page=None):
+    params = {"model": "subcatcsa", "domain": domain, "key": key}
+    if page:
+        params["page"] = page
+    return _get("list", params)
 
 
-def get_subjectcsa(key, domain, subcat=None):
+def get_subjectcsa(key, domain, subcat=None, page=None):
     params = {"model": "subjectcsa", "domain": domain, "key": key}
     if subcat:
         params["subcat"] = subcat
+    if page:
+        params["page"] = page
     return _get("list", params)
 
 

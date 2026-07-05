@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 import zipfile
 
 import requests
@@ -172,8 +173,8 @@ def api_statictable():
 def api_csa_subcat():
     try:
         key = _key()
-        data = bps.get_subcatcsa(key, domain=request.args["domain"])
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_subcatcsa, key=key, domain=request.args["domain"])
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -184,8 +185,9 @@ def api_csa_subcat():
 def api_csa_subject():
     try:
         key = _key()
-        data = bps.get_subjectcsa(key, domain=request.args["domain"], subcat=request.args.get("subcat"))
-        return jsonify(data)
+        items = bps.paginate_all(bps.get_subjectcsa, key=key, domain=request.args["domain"],
+                                  subcat=request.args.get("subcat"))
+        return jsonify(_all_items_response(items))
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -218,14 +220,14 @@ def api_csa_tables():
 
 @app.route("/api/csa/table-detail")
 def api_csa_table_detail():
-    """Resolusi link download & tanggal update satu tabel statis lewat endpoint
-    Detail Statictable lama (schema-nya sudah jelas & stabil), dipanggil pakai
-    id yang sama dari listing CSA (tablesource == 1 alias Static Table)."""
+    """Resolusi link download & tanggal update satu tabel lewat endpoint
+    Detail of Table (Using CSA Subject) - id yang dipakai adalah id ter-encode
+    dari listing CSA, bukan table_id polos punya statictable lama."""
     try:
         key = _key()
         domain = request.args["domain"]
         table_id = request.args["id"]
-        detail = bps.get_statictable_detail(key, domain=domain, table_id=table_id)
+        detail = bps.get_tablestatistic_detail(key, domain=domain, table_id=table_id)
         d = detail.get("data", {}) or {}
         return jsonify({
             "table_id": table_id,
@@ -237,6 +239,27 @@ def api_csa_table_detail():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Gagal mengambil detail tabel {request.args.get('id', '')}: {e}"}), 500
+
+
+def _guess_extension(resp):
+    """BPS nyajiin file lewat script download.php?f=... jadi ekstensi harus
+    ditebak dari header respons, bukan dari path URL-nya."""
+    cd = resp.headers.get("Content-Disposition", "")
+    m = re.search(r'filename="?([^";]+)"?', cd)
+    if m and "." in m.group(1):
+        return m.group(1).rsplit(".", 1)[-1][:5]
+
+    content_type = resp.headers.get("Content-Type", "")
+    type_map = {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+        "application/vnd.ms-excel": "xls",
+        "application/pdf": "pdf",
+        "text/csv": "csv",
+    }
+    for mime, ext in type_map.items():
+        if mime in content_type:
+            return ext
+    return "xls"
 
 
 @app.route("/api/csa/bulk-download", methods=["POST"])
@@ -263,7 +286,7 @@ def api_csa_bulk_download():
             if not excel_url:
                 # coba resolve dulu kalau belum ada link excel-nya
                 try:
-                    detail = bps.get_statictable_detail(key, domain=domain, table_id=f.get("id"))
+                    detail = bps.get_tablestatistic_detail(key, domain=domain, table_id=f.get("id"))
                     excel_url = (detail.get("data") or {}).get("excel")
                 except Exception:
                     excel_url = None
@@ -275,7 +298,7 @@ def api_csa_bulk_download():
             try:
                 file_resp = requests.get(excel_url, timeout=60)
                 file_resp.raise_for_status()
-                ext = excel_url.split(".")[-1].split("?")[0][:5] or "xls"
+                ext = _guess_extension(file_resp)
                 zf.writestr(f"{safe_name}.{ext}", file_resp.content)
             except Exception:
                 skipped.append(title)
