@@ -15,6 +15,17 @@ async function fetchJSON(url, opts) {
     return data;
 }
 
+async function fetchJSONWithRetry(url, retries = 2, delayMs = 1200) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await fetchJSON(url);
+        } catch (err) {
+            if (attempt >= retries) throw err;
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+}
+
 function fillSelect(selectEl, items, valueKey, labelKey, placeholder) {
     selectEl.innerHTML = "";
     if (placeholder) {
@@ -165,7 +176,7 @@ async function selectSubject(subId, title, el) {
     try {
         const [csaResult, simdasiResult] = await Promise.allSettled([
             fetchJSON(`/api/csa/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
-            fetchJSON(`/api/simdasi/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
+            fetchJSONWithRetry(`/api/simdasi/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
         ]);
 
         const items = csaResult.status === "fulfilled" ? (csaResult.value.items || []) : [];
@@ -187,7 +198,14 @@ async function selectSubject(subId, title, el) {
             return row;
         });
         renderTableRows();
-        setStatus("status-subject", `${currentRows.length} tabel ditemukan.`, "info");
+
+        let statusMsg = `${currentRows.length} tabel ditemukan.`;
+        let statusType = "info";
+        if (simdasiResult.status === "rejected") {
+            statusMsg += ` (Gagal memuat katalog SIMDASI - tabel SIMDASI mungkin tampil "tidak dapat dibuka" sementara. Coba pilih ulang subjek ini. Detail: ${simdasiResult.reason.message})`;
+            statusType = "warning";
+        }
+        setStatus("status-subject", statusMsg, statusType);
         resolveStaticDetails();
     } catch (err) {
         setStatus("status-subject", err.message, "error");

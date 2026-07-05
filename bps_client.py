@@ -1,19 +1,40 @@
 """Klien untuk Web API BPS (webapi.bps.go.id) - Dynamic Data & Static Table."""
 
+import time
+
 import requests
 
 BASE_URL = "https://webapi.bps.go.id/v1/api"
 TIMEOUT = 30
+RETRY_DELAYS = [0.5, 1.5, 3.0]  # backoff kalau WAF BPS ngeblok request secara acak
 
 
 class BPSAPIError(Exception):
     pass
 
 
+def _fetch_json(url, params):
+    """GET dengan retry, karena WAF BPS kadang ngeblok request valid secara acak
+    (respons HTML "LTM WAF Block" dengan status 200, bukan error HTTP asli)."""
+    last_error = None
+    for attempt, delay in enumerate([0] + RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        resp = requests.get(url, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        try:
+            return resp.json()
+        except ValueError:
+            last_error = resp.text[:200]
+            continue
+    raise BPSAPIError(
+        f"BPS API tidak merespons dengan data valid setelah beberapa percobaan "
+        f"(kemungkinan rate-limit/WAF sementara) - coba lagi. Detail: {last_error}"
+    )
+
+
 def _get(path, params):
-    resp = requests.get(f"{BASE_URL}/{path}", params=params, timeout=TIMEOUT)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _fetch_json(f"{BASE_URL}/{path}", params)
     if data.get("status") == "Error":
         raise BPSAPIError(f"BPS API error untuk request {path}: {data}")
     return data
@@ -87,18 +108,14 @@ def get_statictable_list(key, domain, lang="ind", page=None, month=None, year=No
 
 def get_statictable_detail(key, domain, table_id, lang="ind"):
     params = {"domain": domain, "model": "statictable", "lang": lang, "id": table_id, "key": key}
-    resp = requests.get("https://webapi.bps.go.id/v1/view", params=params, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    return _fetch_json("https://webapi.bps.go.id/v1/view", params)
 
 
 def get_tablestatistic_detail(key, domain, table_id, lang="ind"):
     """Detail of Table (Using CSA Subject) - id di sini adalah id ter-encode dari
     List of Table (Using CSA Subject), BUKAN table_id polos punya statictable lama."""
     params = {"domain": domain, "model": "tablestatistic", "lang": lang, "id": table_id, "key": key}
-    resp = requests.get("https://webapi.bps.go.id/v1/api/view", params=params, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    return _fetch_json("https://webapi.bps.go.id/v1/api/view", params)
 
 
 def paginate_all(list_fn, max_pages=300, **kwargs):
