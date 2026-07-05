@@ -204,11 +204,10 @@ def api_csa_tables():
         page = 1
         while True:
             resp = bps.get_tablestatistic(key, domain=domain, subject=subject, page=page, perpage=100)
-            info = resp.get("data", [{}, []])[0] or {}
-            page_items = resp.get("data", [{}, []])[1] or []
+            info, page_items = bps.data_parts(resp)
             items.extend(page_items)
             total_pages = info.get("pages", 1) or 1
-            if page >= total_pages or page >= 50:
+            if page >= total_pages or page >= 50 or not page_items:
                 break
             page += 1
         return jsonify({"items": items})
@@ -287,17 +286,23 @@ def api_csa_dynamic_data():
         return jsonify({"error": f"Gagal mengambil data dinamis: {e}"}), 500
 
 
+_simdasi_catalog_cache = {}  # wilayah -> full list tabel SIMDASI (tanpa filter subjek)
+
+
 @app.route("/api/simdasi/tables")
 def api_simdasi_tables():
-    """Tabel SIMDASI untuk 1 subjek CSA tertentu (id_subjek == mms_id == subcsa_id)."""
+    """Katalog SIMDASI lengkap untuk 1 wilayah (subjek difilter di frontend lewat
+    title-matching, bukan lewat parameter id_subjek yang rawan error di BPS)."""
     try:
         key = _key()
         domain = request.args["domain"]
-        subject = request.args["subject"]
         wilayah = _wilayah_from_domain(domain)
-        resp = bps.get_simdasi_area_subject_tables(key, wilayah, subject)
-        items = bps.parse_simdasi_area_subject_tables(resp)
-        return jsonify({"items": items, "wilayah": wilayah})
+
+        if wilayah not in _simdasi_catalog_cache:
+            resp = bps.get_simdasi_area_tables(key, wilayah)
+            _simdasi_catalog_cache[wilayah] = bps.parse_simdasi_area_tables(resp)
+
+        return jsonify({"items": _simdasi_catalog_cache[wilayah], "wilayah": wilayah})
     except BPSAPIError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:

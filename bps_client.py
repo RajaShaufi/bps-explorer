@@ -13,6 +13,17 @@ class BPSAPIError(Exception):
     pass
 
 
+def data_parts(resp):
+    """BPS normalnya balikin 'data': [info, items], tapi kalau hasilnya benar-benar
+    kosong (data-availability: "list-not-available") 'data' malah jadi string kosong
+    "" alih-alih array - indexing [0]/[1] langsung bakal IndexError. Fungsi ini
+    selalu ngasih (info_dict, items_list) yang aman dipakai walau kosong."""
+    data = resp.get("data")
+    if isinstance(data, list) and len(data) >= 2:
+        return (data[0] or {}), (data[1] or [])
+    return {}, []
+
+
 def _fetch_json(url, params):
     """GET dengan retry, karena WAF BPS kadang ngeblok request valid secara acak
     (respons HTML "LTM WAF Block" dengan status 200, bukan error HTTP asli)."""
@@ -128,8 +139,7 @@ def paginate_all(list_fn, max_pages=300, **kwargs):
     all_items = []
     while True:
         resp = list_fn(page=page, **kwargs)
-        info = resp.get("data", [{}, []])[0] or {}
-        items = resp.get("data", [{}, []])[1] or []
+        info, items = data_parts(resp)
         all_items.extend(items)
         total_pages = info.get("pages", 1) or 1
         if page >= total_pages or page >= max_pages:
@@ -168,24 +178,39 @@ def get_tablestatistic(key, domain, subject=None, page=None, perpage=None):
 SIMDASI_BASE = "interoperabilitas/datasource/simdasi/id"
 
 
-def get_simdasi_area_subject_tables(key, wilayah, id_subjek):
-    """List of SIMDASI Table Based on Area and Subject - id_subjek == mms_id,
-    yang sama dengan id subjek CSA (subcsa_id)."""
-    return _get(f"{SIMDASI_BASE}/24/", {"wilayah": wilayah, "id_subjek": id_subjek, "key": key})
+def get_simdasi_area_tables(key, wilayah):
+    """List of SIMDASI Table Based on Area - TANPA filter id_subjek.
+
+    Endpoint 24 (Based on Area AND Subject) selalu balikin halaman "LTM WAF
+    Block" kalau id_subjek yang diminta nggak punya tabel SIMDASI sama sekali
+    (mis. subjek IPTEK/Statistik Makroekonomi) - ini bug di backend BPS
+    sendiri (server error yang ke-mask jadi WAF block), bukan rate limit.
+    Endpoint 23 (tanpa filter subjek) selalu stabil, jadi filter subjeknya
+    dipindah ke sisi kita (title-matching terhadap listing CSA)."""
+    return _get(f"{SIMDASI_BASE}/23/", {"wilayah": wilayah, "key": key})
 
 
 def get_simdasi_table_detail(key, wilayah, tahun, id_tabel):
     return _get(f"{SIMDASI_BASE}/25/", {"wilayah": wilayah, "tahun": tahun, "id_tabel": id_tabel, "key": key})
 
 
-def parse_simdasi_area_subject_tables(response):
-    inner = (response.get("data") or [{}, {}])[1] or {}
+def _data_second_obj(response):
+    """Sama seperti data_parts(), tapi buat endpoint SIMDASI yang elemen ke-2-nya
+    berupa object (bukan list of items) - balikin dict kosong kalau malformed."""
+    data = response.get("data")
+    if isinstance(data, list) and len(data) >= 2 and isinstance(data[1], dict):
+        return data[1]
+    return {}
+
+
+def parse_simdasi_area_tables(response):
+    inner = _data_second_obj(response)
     return inner.get("data", []) or []
 
 
 def parse_simdasi_table_detail(response):
     """Ubah respons Detail of SIMDASI Table jadi (meta, rows rata kategori/variabel/nilai)."""
-    inner = (response.get("data") or [{}, {}])[1] or {}
+    inner = _data_second_obj(response)
     kolom = inner.get("kolom", {}) or {}
     data_rows = inner.get("data", []) or []
 

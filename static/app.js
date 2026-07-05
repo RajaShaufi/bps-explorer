@@ -176,7 +176,7 @@ async function selectSubject(subId, title, el) {
     try {
         const [csaResult, simdasiResult] = await Promise.allSettled([
             fetchJSON(`/api/csa/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
-            fetchJSONWithRetry(`/api/simdasi/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}&subject=${subId}`),
+            fetchJSONWithRetry(`/api/simdasi/tables?key=${encodeURIComponent(apiKey())}&domain=${domainSel.value}`),
         ]);
 
         const items = csaResult.status === "fulfilled" ? (csaResult.value.items || []) : [];
